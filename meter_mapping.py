@@ -1,4 +1,4 @@
-#Create  mapping file
+#Mapping file
 METER_TO_HOUSEHOLD = {
     "M2000": "H1000",
     "M2001": "H1001",
