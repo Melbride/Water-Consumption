@@ -1,0 +1,4 @@
+Risk_Level,Count,Percentage,Threshold,Action
+High,8,16%,>0.112,Implement water limitations
+Medium,12,24%,0.046-0.112,Monitor closely
+Low,30,60%,<0.046,Normal water supply
