@@ -135,7 +135,7 @@ def receive_hardware_data(data: dict):
             "processed": False
         })
         
-        # Process YOUR hardware format
+        # Process hardware format
         processed_data = process_your_hardware_format(data)
         
         if processed_data:
@@ -175,11 +175,11 @@ def receive_hardware_data(data: dict):
 def process_your_hardware_format(raw_data: dict):
     """Process YOUR specific hardware format"""
     try:
-        # Calculate consumption from your hardware data
+        #Calculate consumption from hardware data
         total_liters = raw_data.get('totalLiters', 0)
         remaining_units = raw_data.get('remainingUnits', 0)
         
-        # Handle NaN values
+        #Handle NaN values
         if pd.isna(total_liters) or total_liters == float('nan'):
             total_liters = 0
         if pd.isna(remaining_units) or remaining_units == float('nan'):
@@ -187,7 +187,7 @@ def process_your_hardware_format(raw_data: dict):
             
         consumption = total_liters - remaining_units
         
-        # Convert to ML format
+        #Convert to ML format
         ml_data = {
             "reading_litres": float(total_liters),
             "consumption_litres": float(consumption),
@@ -211,17 +211,17 @@ def process_your_hardware_format(raw_data: dict):
 def make_ml_prediction(data: dict):
     """Make ML predictions and add household context"""
     try:
-        # Load models
+        #Load models
         with open(os.path.join(MODEL_PATH, 'water_ml_models.pkl'), 'rb') as f:
             models = pickle.load(f)
         
-        # Extract features with comprehensive NaN handling
+        #Extract features with comprehensive NaN handling
         features = models['features']
         feature_values = []
         for feature in features:
             value = data.get(feature, 0)
             try:
-                # Handle all types of invalid values
+                #Handle all types of invalid values
                 if pd.isna(value) or value == float('nan') or value == float('inf') or value == float('-inf') or value is None:
                     feature_values.append(0.0)
                 else:
@@ -231,10 +231,10 @@ def make_ml_prediction(data: dict):
         
         X = np.array([feature_values])
         
-        # Make predictions
+        #Make predictions
         predictions = {}
         
-        # Consumption Risk
+        #Consumption Risk
         try:
             risk_pred = models['risk_model'].predict(X)[0]
             risk_label = models['risk_encoder'].inverse_transform([risk_pred])[0]
@@ -242,7 +242,7 @@ def make_ml_prediction(data: dict):
         except Exception as e:
             predictions['consumption_risk'] = {"prediction": "medium", "error": str(e)}
         
-        # Leak Detection
+        #Leak Detection
         try:
             leak_pred = models['leak_model'].predict(X)[0]
             leak_prob = models['leak_model'].predict_proba(X)[0][1]
@@ -253,7 +253,7 @@ def make_ml_prediction(data: dict):
         except Exception as e:
             predictions['leak_detection'] = {"prediction": False, "probability": 0.0, "error": str(e)}
         
-        # Revenue Prediction
+        #Revenue Prediction
         try:
             revenue_pred = models['revenue_model'].predict(X)[0]
             predictions['revenue_prediction'] = {
@@ -263,7 +263,7 @@ def make_ml_prediction(data: dict):
         except Exception as e:
             predictions['revenue_prediction'] = {"predicted_revenue": 0.0, "currency": "USD", "error": str(e)}
         
-        # Sustainability Prediction
+        #Sustainability Prediction
         try:
             sustainability_pred = models['sustain_model'].predict(X)[0]
             predictions['sustainability_prediction'] = {
@@ -273,7 +273,7 @@ def make_ml_prediction(data: dict):
         except Exception as e:
             predictions['sustainability_prediction'] = {"hours_remaining": 0.0, "days_remaining": 0.0, "error": str(e)}
         
-        # Add household enhancement
+        #Add household enhancement
         household_enhancement = {}
         if household_model and 'device_id' in data:
             try:
@@ -316,13 +316,13 @@ def use_gradient_boosting_model(household_id):
         if not household_model or not scaler:
             return {"error": "Model or scaler not loaded"}
         
-        # Get household features
+        #Get household features
         household_features = get_household_features_from_firebase(household_id)
         
         if household_features is None:
             return {"error": "Household features not found"}
         
-        # Convert to array in correct order (match training features)
+        #Convert to array in correct order (match training features)
         feature_values = []
         for feature in household_feature_columns:
             if feature in household_features:
@@ -424,7 +424,7 @@ def process_unprocessed_hardware_data():
                 
                 print(f"Processing hardware data: {hardware_input}")
                 
-                # Process the hardware data (same as Postman endpoint)
+                # Process the hardware data (same as Postman endpoint
                 processed_data = process_your_hardware_format(hardware_input)
                 
                 if processed_data:
@@ -482,7 +482,7 @@ def process_unprocessed_hardware_data():
 def load_household_features():
     """Load household features from Excel to Firebase"""
     try:
-        # Load household dataset (Final_water_dataset.csv - production ready)
+        # Load household dataset (Final_water_dataset.csv )
         df = pd.read_csv(os.path.join(DATA_PATH, 'Final_water_dataset.csv'))
         print(f"Loaded production dataset with shape: {df.shape}")
         
@@ -510,12 +510,13 @@ def load_household_features():
         
         # Load household features with better NaN handling and batching
         loaded_count = 0
-        batch_size = 500  # Process in batches to prevent timeout
+        # Process in batches to prevent timeout
+        batch_size = 500  
         batch = db.batch()
         
-        # Process each household row with production dataset structure
+        #Process each household row with production dataset structure
         for index, row in df.iterrows():
-            # Extract features for model prediction
+            #Extract features for model prediction
             features = {}
             for col in household_feature_columns:
                 if col in df.columns and col != 'Leak_Alert':
@@ -555,18 +556,18 @@ def load_household_features():
                 "loaded_at": firestore.SERVER_TIMESTAMP
             }
                 
-            # Add to batch
+            #Add to batch
             doc_ref = household_ref.document()
             batch.set(doc_ref, household_data)
             loaded_count += 1
             
-            # Commit batch when full
+            #Commit batch when full
             if loaded_count % batch_size == 0:
                 batch.commit()
                 batch = db.batch()
                 print(f"Loaded {loaded_count} households...")
                     
-        # Commit remaining batch
+        #Commit remaining batch
         if loaded_count % batch_size != 0:
             batch.commit()
         
@@ -587,32 +588,32 @@ def load_household_features():
 def load_household_features_skip_clear():
     """Load household features without clearing existing data (faster)"""
     try:
-        # Load household dataset (Final_water_dataset.csv - production ready)
+        #Load household dataset (Final_water_dataset.csv)
         df = pd.read_csv(os.path.join(DATA_PATH, 'Final_water_dataset.csv'))
         print(f"Loaded production dataset with shape: {df.shape}")
         
-        # Get preprocessing objects
+        #Get preprocessing objects
         if not household_feature_columns:
             return {"status": "error", "message": "Model config not loaded - check model files"}
         
         print(f"Using {len(household_feature_columns)} features")
         
-        # Skip clearing existing data - just load new data
+        #Skip clearing existing data - just load new data
         household_ref = db.collection('household_features')
         
-        # Load household features with batching
+        #Load household features with batching
         loaded_count = 0
         batch_size = 500
         batch = db.batch()
         
-        # Process each household row with production dataset structure
+        #Process each household row with production dataset structure
         for index, row in df.iterrows():
-            # Extract features for model prediction
+            #Extract features for model prediction
             features = {}
             for col in household_feature_columns:
                 if col in df.columns and col != 'Leak_Alert':
                     value = row[col]
-                    # Handle NaN values for production dataset
+                    #Handle NaN values for production dataset
                     try:
                         if pd.isna(value) or value == float('nan') or value == float('inf') or value == float('-inf') or value is None:
                             features[col] = 0.0
@@ -621,7 +622,7 @@ def load_household_features_skip_clear():
                     except (ValueError, TypeError):
                         features[col] = 0.0
             
-            # Create household data document with production dataset fields
+            #Create household data document with production dataset fields
             household_data = {
                 "household_id": str(int(row.get('id', index))),
                 "features": features,
@@ -647,18 +648,18 @@ def load_household_features_skip_clear():
                 "loaded_at": firestore.SERVER_TIMESTAMP
             }
                 
-            # Add to batch
+            #Add to batch
             doc_ref = household_ref.document()
             batch.set(doc_ref, household_data)
             loaded_count += 1
             
-            # Commit batch when full
+            #Commit batch when full
             if loaded_count % batch_size == 0:
                 batch.commit()
                 batch = db.batch()
                 print(f"Loaded {loaded_count} households...")
                     
-        # Commit remaining batch
+        #Commit remaining batch
         if loaded_count % batch_size != 0:
             batch.commit()
         
@@ -732,35 +733,39 @@ def prepare_training_data():
         training_data = []
         
         for index, row in df.iterrows():
-            # Create realistic targets (not simple overfitting rules)
+            #Create targets
             import numpy as np
             import random
             from datetime import datetime
             
-            # Realistic consumption risk with household and time factors
+            #consumption risk with household and time factors
             def create_realistic_consumption_risk(row):
                 base_usage = row['usedUnits']
-                # Add household size factor (simulate from house_id)
+                #Add household size factor (simulate from house_id)
                 household_size = hash(str(row['house_id'])) % 6 + 1  # 1-6 people
-                household_factor = 0.8 + (household_size * 0.1)  # Larger households use more
+                #Larger households use more
+                household_factor = 0.8 + (household_size * 0.1)  
                 
-                # Add time factor (from timestamp)
+                #Add time factor (from timestamp)
                 hour = datetime.strptime(str(row['timestamp']), "%Y-%m-%d %H:%M:%S").hour
-                if 6 <= hour <= 9 or 18 <= hour <= 21:  # Peak hours
+                 #Peak hours
+                if 6 <= hour <= 9 or 18 <= hour <= 21: 
                     time_factor = 1.3
-                elif 22 <= hour <= 5:  # Night hours
+                    #Night hours
+                elif 22 <= hour <= 5:  
                     time_factor = 0.7
-                else:  # Normal hours
+                    #Normal hours
+                else:  
                     time_factor = 1.0
                 
-                # Calculate adjusted usage with factors
+                #Calculate adjusted usage with factors
                 adjusted_usage = base_usage * household_factor * time_factor
                 
-                # Add realistic noise (±10%)
+                #Add realistic noise (±10%)
                 noise = np.random.normal(0, 0.1)
                 final_usage = adjusted_usage * (1 + noise)
                 
-                # Risk classification (more realistic thresholds)
+                #Risk classification thresholds
                 if final_usage > 80:
                     return "critical"
                 elif final_usage > 50:
@@ -770,17 +775,20 @@ def prepare_training_data():
                 else:
                     return "low"
             
-            # Realistic leak detection with multiple factors
+            #Realistic leak detection with multiple factors
             def create_realistic_leak_detection(row):
                 usage = row['usedUnits']
-                flow_rate = usage / 60  # Approximate flow rate
+                # Approximate flow rate
+                flow_rate = usage / 60  
                 
-                # Multiple leak indicators (not just usage > 80)
-                continuous_flow = flow_rate > 2.0  # High continuous flow
-                sudden_spike = usage > (row['remainingUnits'] * 0.4)  # Used 40% of remaining
+                #Multiple leak indicators (not just usage > 80)
+                #High continuous flow
+                continuous_flow = flow_rate > 2.0 
+                #Used 40% of remaining
+                sudden_spike = usage > (row['remainingUnits'] * 0.4)  
                 unusual_time = datetime.strptime(str(row['timestamp']), "%Y-%m-%d %H:%M:%S").hour in range(2, 5)
                 
-                # Calculate leak probability
+                #Calculate leak probability
                 leak_probability = 0.0
                 if continuous_flow:
                     leak_probability += 0.4
@@ -789,14 +797,14 @@ def prepare_training_data():
                 if unusual_time and usage > 30:
                     leak_probability += 0.3
                 
-                # Add some randomness for realism
+                #Add some randomness for realism
                 leak_probability += random.uniform(-0.1, 0.1)
                 
                 return random.random() < max(0, min(leak_probability, 1.0))
             
-            # Create realistic targets
+            # Create targets
             record = {
-                # Hardware-compatible features (6 fields)
+                #Hardware-compatible features (6 fields)
                 "reading_litres": float(row['currentUnits']),
                 "consumption_litres": float(row['usedUnits']),
                 "remaining_litres": float(row['remainingUnits']),
@@ -809,7 +817,7 @@ def prepare_training_data():
                 "source_liters": float(row['sourceLiters']),
                 "total_liters": float(row['totalLiters']),
                 
-                # REALISTIC TARGETS (not overfitting)
+                #TARGETS
                 "consumption_risk": create_realistic_consumption_risk(row),
                 "leak_detected": create_realistic_leak_detection(row),
                 "efficiency_score": min(1.0, row['usedUnits'] / max(row['sourceLiters'], 1) * random.uniform(8, 12)),
