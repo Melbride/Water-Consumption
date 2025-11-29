@@ -46,7 +46,7 @@ Thumbs.db
 .env.*.local
 
 # Firebase credentials (be careful with this)
-# serviceAccountKey.json  # Uncomment if you don't want to commit this
+serviceAccountKey.json
 
 # Temporary files
 *.tmp
