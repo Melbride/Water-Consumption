@@ -50,13 +50,13 @@ def verify_api_key(x_api_key: str = Header(...)):
 def normalize_hardware_data(data: dict) -> dict:
     return {
         "meter_id": data.get("meter_id"),
+        "plot_id": data.get("plot_id", "UNKNOWN"),
         "total_liters": float(data.get("totalLiters", 0)),
         "remaining_units": float(data.get("remainingUnits", 0)),
         "source_liters": float(data.get("sourceLiters", 0)),
         "leak_flag": bool(data.get("leak", False)),
         "timestamp": datetime.utcnow()
     }
-
 
 def classify_consumption_risk(total_liters: float) -> str:
     #replace with ML output if model exists
@@ -67,29 +67,24 @@ def classify_consumption_risk(total_liters: float) -> str:
         except Exception:
             pass
 
-    #rule-based fallback based on the consumption patterns
-    if total_liters > 200:  
+    #rule-based fallback based on Kenyan consumption patterns
+    if total_liters > 200:  # Above WASREB lifeline (200L/day household)
         return "High"
-    elif total_liters > 120:  
+    elif total_liters > 120:  # Above urban average (120L/person)
         return "Medium"
-    return "Low"  
-
+    return "Low"  # Normal Kenyan usage (40-120L range)
 
 def detect_leak(leak_flag: bool, total_liters: float) -> bool:
-    #Leak if usage exceeds reasonable maximum
-    return leak_flag or total_liters > 400  
-
+    return leak_flag or total_liters > 400  # Leak if usage exceeds reasonable maximum
 
 def calculate_revenue(total_liters: float) -> float:
     return round(total_liters * WATER_TARIFF_PER_LITER, 2)
-
 
 def estimate_sustainability(remaining_units: float) -> float:
     if AVG_COMMUNITY_HOURLY_USE == 0:
         return 0
     hours_left = remaining_units / AVG_COMMUNITY_HOURLY_USE
     return round(hours_left, 2)
-
 
 #Main Automation Endpoint
 @app.post("/api/hardware-data")
@@ -98,7 +93,7 @@ def receive_hardware_data(
     x_api_key: str = Header(...)
 ):
     """
-    The FLOW:
+    MVP FLOW:
     1. Receive hardware data
     2. Store raw data
     3. Normalize data
@@ -132,6 +127,7 @@ def receive_hardware_data(
 
     prediction_result = {
         "meter_id": normalized["meter_id"],
+        "plot_id": normalized["plot_id"],
         "consumption_risk": consumption_risk,
         "leak_detected": leak_detected,
         "predicted_revenue": revenue,
