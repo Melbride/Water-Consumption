@@ -432,6 +432,10 @@ def stop_water_usage_listener():
             logger.info("Firestore listener stopped")
 
 # ── Health check endpoint ─────────────────────────────────────────────────────
+@app.get("/")
+def root():
+    return {"message": "Water Consumption ML API", "status": "running", "docs": "/health"}
+
 @app.get("/health")
 def health_check():
     """
