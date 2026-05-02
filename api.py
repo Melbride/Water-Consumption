@@ -11,11 +11,11 @@ import json
 import logging
 import threading
 
-# ── Logging ───────────────────────────────────────────────────────────────────
+#Logging 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ── Firebase ──────────────────────────────────────────────────────────────────
+#Firebase
 try:
     if os.path.exists("serviceAccountKey.json"):
         cred = credentials.Certificate("serviceAccountKey.json")
@@ -33,11 +33,12 @@ except Exception as e:
     logger.error(f"Firebase initialization failed: {e}")
     db = None
 
-# ── Constants ─────────────────────────────────────────────────────────────────
-WATER_TARIFF_PER_LITER = 0.5   # KES per liter (10 KES per 20L)
+#Constants 
+#KES per liter (10 KES per 20L)
+WATER_TARIFF_PER_LITER = 0.5   
 REVENUE_CURRENCY       = "KES"
 
-# ── The 18 features the model was trained on (order matters for scaling) ──────
+#The 18 features the model was trained on in order for scaling
 MODEL_FEATURE_COLUMNS = [
     "adult_count",
     "child_count",
@@ -59,7 +60,7 @@ MODEL_FEATURE_COLUMNS = [
     "avg_price_per_liter_cedis",
 ]
 
-# ── Load ML model ─────────────────────────────────────────────────────────────
+#Load ML model
 try:
     consumption_model = joblib.load("models/water_model_production_final.pkl")
     logger.info("ML model loaded successfully")
@@ -67,7 +68,7 @@ except Exception as e:
     consumption_model = None
     logger.warning(f"ML model not loaded: {e}")
 
-# ── Load scaler ───────────────────────────────────────────────────────────────
+#Load scaler 
 try:
     with open("models/model_config_final.pkl", "rb") as f:
         model_config = pickle.load(f)
@@ -77,27 +78,34 @@ except Exception as e:
     model_scaler = None
     logger.warning(f"Model scaler not loaded: {e}")
 
-# ── Listener state ────────────────────────────────────────────────────────────
+#Listener state
 water_usage_watch     = None
 listener_bootstrapped = False
 listener_lock         = threading.Lock()
 
-# ── Community average features — computed once at startup ─────────────────────
-# Used as fallback when a meter has no matching household_features document.
+#Community average features — computed once at startup 
+#Used as fallback when a meter has no matching household_features document.
 COMMUNITY_AVG_FEATURES: dict = {col: 0.0 for col in MODEL_FEATURE_COLUMNS}
 
-# ── Lifespan ──────────────────────────────────────────────────────────────────
+#Lifespan 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup: compute community averages then start listener. Shutdown: clean up."""
-    compute_community_avg_features()
+    """
+    Startup: start listener immediately so Render wakes up fast.
+    Compute community averages in background — doesn't block startup.
+    Shutdown: clean up listener.
+    """
+    #Start listener immediately — server is ready to accept connections
     start_water_usage_listener()
+    #Compute averages in background — runs after server is already up
+    thread = threading.Thread(target=compute_community_avg_features, daemon=True)
+    thread.start()
     yield
     stop_water_usage_listener()
 
 app = FastAPI(title="Water Consumption ML API", lifespan=lifespan)
 
-# ── Community average computation ─────────────────────────────────────────────
+#Community average computation 
 def compute_community_avg_features():
     """
     Read all household_features documents once at startup.
@@ -118,7 +126,8 @@ def compute_community_avg_features():
     try:
         for doc in db.collection("household_features").stream():
             data     = doc.to_dict() or {}
-            features = data.get("features", data)  # support nested features map
+            #support nested features map
+            features = data.get("features", data)  
             total   += 1
             for col in MODEL_FEATURE_COLUMNS:
                 raw = features.get(col, data.get(col))
@@ -145,7 +154,7 @@ def compute_community_avg_features():
     except Exception as e:
         logger.error(f"Failed to compute community averages: {e}")
 
-# ── Firestore helpers ─────────────────────────────────────────────────────────
+#Firestore helpers 
 def fetch_household_features(meter_number: str) -> dict:
     """
     Look up household survey features by meterNumber in household_features.
@@ -158,14 +167,14 @@ def fetch_household_features(meter_number: str) -> dict:
     try:
         docs = (
             db.collection("household_features")
-            .where("meterNumber", "==", meter_number)
+            .where(filter=firestore.FieldFilter("meterNumber", "==", meter_number))
             .limit(1)
             .stream()
         )
         for doc in docs:
             payload      = doc.to_dict() or {}
             features_map = payload.get("features", payload)
-            # Start from community averages, override with this household's values
+            #Start from community averages, override with this household's values
             result = dict(COMMUNITY_AVG_FEATURES)
             for col in MODEL_FEATURE_COLUMNS:
                 raw = features_map.get(col, payload.get(col))
@@ -193,7 +202,7 @@ def resolve_person_and_household(meter_number: str):
     try:
         docs = (
             db.collection("users")
-            .where("meterNumber", "==", meter_number)
+            .where(filter=firestore.FieldFilter("meterNumber", "==", meter_number))
             .limit(1)
             .stream()
         )
@@ -207,7 +216,7 @@ def resolve_person_and_household(meter_number: str):
 
     return "Unknown Person", None, False
 
-# ── Normalize waterUsage document ─────────────────────────────────────────────
+#Normalize waterUsage document 
 def normalize_water_usage(data: dict) -> dict:
     """
     Map waterUsage field names to our internal normalized format.
@@ -239,7 +248,7 @@ def normalize_water_usage(data: dict) -> dict:
         "timestamp":       datetime.now(timezone.utc),
     }
 
-# ── ML prediction functions ───────────────────────────────────────────────────
+#ML prediction functions 
 def build_feature_vector(household_features: dict) -> list:
     """Build the ordered 18-feature vector the model expects."""
     return [household_features.get(col, 0.0) for col in MODEL_FEATURE_COLUMNS]
@@ -251,13 +260,17 @@ def get_leak_probability(feature_vector: list) -> float:
     """
     if consumption_model and model_scaler:
         try:
-            scaled = model_scaler.transform([feature_vector])
-            proba  = consumption_model.predict_proba(scaled)[0][1]  # probability of class 1
+            import pandas as pd
+            #Pass as DataFrame with feature names — matches how scaler was trained
+            df     = pd.DataFrame([feature_vector], columns=MODEL_FEATURE_COLUMNS)
+            scaled = model_scaler.transform(df)
+            # probability of class 1
+            proba  = consumption_model.predict_proba(scaled)[0][1]  
             return round(float(proba), 4)
         except Exception as e:
             logger.warning(f"Model prediction failed: {e}")
 
-    # Fallback — normalize consumption_risk_score (range 0–6) to 0–1
+    #Fallback — normalize consumption_risk_score (range 0–6) to 0–1
     risk_score = feature_vector[MODEL_FEATURE_COLUMNS.index("consumption_risk_score")]
     return round(min(max(risk_score / 6.0, 0.0), 1.0), 4)
 
@@ -296,7 +309,7 @@ def estimate_sustainability(remaining_units: float, avg_daily_usage: float) -> d
     hours = round(days * 24, 2)
     return {"days": days, "hours": hours}
 
-# ── Core ML pipeline ──────────────────────────────────────────────────────────
+#Core ML pipeline 
 def generate_predictions(normalized: dict) -> dict:
     """
     Full ML pipeline:
@@ -309,16 +322,16 @@ def generate_predictions(normalized: dict) -> dict:
     """
     meter_number = normalized["meterNumber"]
 
-    # Step 1 — household features
+    #household features
     household_features = fetch_household_features(meter_number)
 
-    # Step 2 — feature vector
+    #feature vector
     feature_vector = build_feature_vector(household_features)
 
-    # Step 3 — ML
+    #ML
     leak_probability = get_leak_probability(feature_vector)
 
-    # Step 4 — 4 predictions
+    #predictions
     consumption_risk  = classify_consumption_risk(leak_probability)
     leak_detected     = detect_leak(normalized["leak_flag"], leak_probability)
     predicted_revenue = calculate_revenue(normalized["total_liters"])
@@ -327,11 +340,11 @@ def generate_predictions(normalized: dict) -> dict:
         normalized["avg_daily_usage"],  # comes directly from waterUsage.dailyUsage
     )
 
-    # Step 5 — who owns this meter
+    #who owns this meter
     person_name, household_id, user_matched = resolve_person_and_household(meter_number)
 
     prediction_result = {
-        # Identity
+        #Identity
         "meterNumber":                meter_number,
         "accountNumber":              normalized.get("account_number"),
         "userId":                     normalized.get("user_id"),
@@ -339,7 +352,7 @@ def generate_predictions(normalized: dict) -> dict:
         "householdId":                household_id,
         "userMatched":                user_matched,
 
-        # The 4 core predictions
+        #core predictions
         "consumption_risk":           consumption_risk,     # Low / Medium / High
         "leak_detected":              leak_detected,        # True / False
         "leak_probability":           leak_probability,     # 0.0 → 1.0 for dashboard gauge
@@ -348,7 +361,7 @@ def generate_predictions(normalized: dict) -> dict:
         "sustainability_days":        sustainability["days"],
         "sustainability_hours":       sustainability["hours"],
 
-        # Context passed through from waterUsage for dashboard use
+        #Context passed through from waterUsage for dashboard use
         "total_liters":               normalized["total_liters"],
         "remaining_units":            normalized["remaining_units"],
         "avg_daily_usage_liters":     normalized["avg_daily_usage"],
@@ -362,12 +375,12 @@ def generate_predictions(normalized: dict) -> dict:
         "generated_at":               datetime.now(timezone.utc),
     }
 
-    # Write predictions to Firestore
+    #Write predictions to Firestore
     db.collection("ml_predictions").add(prediction_result)
 
     return prediction_result
 
-# ── Firestore listener ────────────────────────────────────────────────────────
+#Firestore listener 
 def process_water_usage_document(doc_snapshot):
     """Process a single waterUsage document through the full ML pipeline."""
     data         = doc_snapshot.to_dict() or {}
@@ -431,15 +444,17 @@ def stop_water_usage_listener():
             water_usage_watch = None
             logger.info("Firestore listener stopped")
 
-# ── Health check endpoint ─────────────────────────────────────────────────────
+#Root endpoint
 @app.get("/")
 def root():
-    return {"message": "Water Consumption ML API", "status": "running", "docs": "/health"}
+    return {"message": "Water Consumption ML API is running"}
 
-@app.get("/health")
+#Health check endpoint
+@app.api_route("/health", methods=["GET", "HEAD"])
 def health_check():
     """
     Confirms all system components are running correctly.
+    Accepts both GET and HEAD — HEAD is used by UptimeRobot keep-alive pings.
     community_avg_loaded: True means model has real features to work with.
     listener_active: True means real-time processing is running.
     """
