@@ -158,7 +158,7 @@ def fetch_household_features(meter_number: str) -> dict:
     try:
         docs = (
             db.collection("household_features")
-            .where("meterNumber", "==", meter_number)
+            .where(filter=firestore.FieldFilter("meterNumber", "==", meter_number))
             .limit(1)
             .stream()
         )
@@ -193,7 +193,7 @@ def resolve_person_and_household(meter_number: str):
     try:
         docs = (
             db.collection("users")
-            .where("meterNumber", "==", meter_number)
+            .where(filter=firestore.FieldFilter("meterNumber", "==", meter_number))
             .limit(1)
             .stream()
         )
@@ -251,7 +251,10 @@ def get_leak_probability(feature_vector: list) -> float:
     """
     if consumption_model and model_scaler:
         try:
-            scaled = model_scaler.transform([feature_vector])
+            import pandas as pd
+            # Pass as DataFrame with feature names — matches how scaler was trained
+            df     = pd.DataFrame([feature_vector], columns=MODEL_FEATURE_COLUMNS)
+            scaled = model_scaler.transform(df)
             proba  = consumption_model.predict_proba(scaled)[0][1]  # probability of class 1
             return round(float(proba), 4)
         except Exception as e:
@@ -432,14 +435,11 @@ def stop_water_usage_listener():
             logger.info("Firestore listener stopped")
 
 # ── Health check endpoint ─────────────────────────────────────────────────────
-@app.get("/")
-def root():
-    return {"message": "Water Consumption ML API", "status": "running", "docs": "/health"}
-
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 def health_check():
     """
     Confirms all system components are running correctly.
+    Accepts both GET and HEAD — HEAD is used by UptimeRobot keep-alive pings.
     community_avg_loaded: True means model has real features to work with.
     listener_active: True means real-time processing is running.
     """
