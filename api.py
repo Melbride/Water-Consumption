@@ -89,9 +89,16 @@ COMMUNITY_AVG_FEATURES: dict = {col: 0.0 for col in MODEL_FEATURE_COLUMNS}
 # ── Lifespan ──────────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup: compute community averages then start listener. Shutdown: clean up."""
-    compute_community_avg_features()
+    """
+    Startup: start listener immediately so Render wakes up fast.
+    Compute community averages in background — doesn't block startup.
+    Shutdown: clean up listener.
+    """
+    # Start listener immediately — server is ready to accept connections
     start_water_usage_listener()
+    # Compute averages in background — runs after server is already up
+    thread = threading.Thread(target=compute_community_avg_features, daemon=True)
+    thread.start()
     yield
     stop_water_usage_listener()
 
